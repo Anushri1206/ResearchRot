@@ -21,6 +21,21 @@ const UploadSection = () => {
   const [error, setError] = useState(null);
   const [response, setResponse] = useState(null);
 
+
+  // converts the arxiv url to a pdf url 
+  const convertArxivUrl = (inputUrl) => {
+    // Handle various arXiv URL formats
+    const arxivRegex = /^https?:\/\/(?:www\.)?arxiv\.org\/(?:abs|pdf)\/(\d{4}\.\d{4,5})(?:\.pdf)?$/;
+    const match = inputUrl.match(arxivRegex);
+    
+    if (match) {
+      // Always return in PDF format
+      console.log(`https://arxiv.org/pdf/${match[1]}`)
+      return `https://arxiv.org/pdf/${match[1]}`;
+    }
+    return inputUrl;
+  };
+
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -39,15 +54,17 @@ const UploadSection = () => {
     setResponse(null);
 
     try {
+      const convertedUrl = convertArxivUrl(url);
+      console.log('Sending URL to backend:', convertedUrl);
+
       const response = await fetch('http://localhost:8000/query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: url,
-          context: null,
-          file_content: null,
+          url: convertedUrl,
+          is_arxiv: true
         }),
       });
 
@@ -58,6 +75,7 @@ const UploadSection = () => {
       const data = await response.json();
       setResponse(data.answer);
     } catch (err) {
+      console.error('Error processing URL:', err);
       setError(err.message);
     } finally {
       setLoading(false);
