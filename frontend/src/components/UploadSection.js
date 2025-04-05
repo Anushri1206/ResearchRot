@@ -7,6 +7,8 @@ import {
   Paper,
   IconButton,
   InputAdornment,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import LinkIcon from '@mui/icons-material/Link';
@@ -15,33 +17,109 @@ import CloseIcon from '@mui/icons-material/Close';
 const UploadSection = () => {
   const [url, setUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [response, setResponse] = useState(null);
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     if (file) {
       setSelectedFile(file);
+      setError(null);
+      setResponse(null);
     }
   };
 
-  const handleUrlSubmit = (event) => {
+  const handleUrlSubmit = async (event) => {
     event.preventDefault();
-    if (url) {
-      // Handle URL submission
-      console.log('URL submitted:', url);
-      setUrl('');
+    if (!url) return;
+
+    setLoading(true);
+    setError(null);
+    setResponse(null);
+
+    try {
+      const response = await fetch('http://localhost:8000/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: url,
+          context: null,
+          file_content: null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process URL');
+      }
+
+      const data = await response.json();
+      setResponse(data.answer);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleFileUpload = () => {
-    if (selectedFile) {
-      // Handle file upload
-      console.log('File to upload:', selectedFile);
-      setSelectedFile(null);
+  const handleFileUpload = async () => {
+    if (!selectedFile) return;
+
+    setLoading(true);
+    setError(null);
+    setResponse(null);
+
+    try {
+      const fileContent = await selectedFile.text();
+      
+      const response = await fetch('http://localhost:8000/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: 'Process this file content',
+          context: null,
+          file_content: fileContent,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process file');
+      }
+
+      const data = await response.json();
+      setResponse(data.answer);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <Box sx={{ mt: 4 }}>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+      
+      {response && (
+        <Paper
+          elevation={2}
+          sx={{
+            p: 2,
+            mb: 3,
+            bgcolor: '#f5f5f5',
+          }}
+        >
+          <Typography variant="body1">{response}</Typography>
+        </Paper>
+      )}
+
       {/* URL Input Section */}
       <Paper
         elevation={0}
@@ -79,9 +157,9 @@ const UploadSection = () => {
             variant="contained"
             color="primary"
             sx={{ mt: 2 }}
-            disabled={!url}
+            disabled={!url || loading}
           >
-            Add URL
+            {loading ? <CircularProgress size={24} /> : 'Process URL'}
           </Button>
         </form>
       </Paper>
@@ -123,8 +201,9 @@ const UploadSection = () => {
               color="primary"
               onClick={handleFileUpload}
               sx={{ mt: 2 }}
+              disabled={loading}
             >
-              Upload File
+              {loading ? <CircularProgress size={24} /> : 'Process File'}
             </Button>
           </Box>
         )}
