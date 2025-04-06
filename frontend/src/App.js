@@ -1,25 +1,24 @@
 import React, { useState } from 'react';
-import { Box, Container, Typography, Paper, ThemeProvider, createTheme, IconButton } from '@mui/material';
+import { Box, Container, Typography, Paper, ThemeProvider, IconButton } from '@mui/material';
 import UploadSection from './components/UploadSection';
 import GrassEffect from './components/GrassEffect';
 import GrassIcon from '@mui/icons-material/Grass';
-
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    background: {
-      default: '#f5f5f5',
-    },
-  },
-});
+import FlashcardGenerator from './components/FlashcardGenerator';
+import MnemonicGenerator from './components/MnemonicGenerator';
+import theme from './theme';
+import { CssBaseline } from '@mui/material';
 
 function App() {
   const [showGrass, setShowGrass] = useState(false);
+  const [summary, setSummary] = useState(null);
+
+  const handleSummaryGenerated = (newSummary) => {
+    setSummary(newSummary);
+  };
 
   return (
     <ThemeProvider theme={theme}>
+      <CssBaseline />
       <Box
         sx={{
           minHeight: '100vh',
@@ -52,22 +51,25 @@ function App() {
         </IconButton>
 
         <Container maxWidth="md">
-          <Paper
-            elevation={3}
-            sx={{
-              p: 4,
-              borderRadius: 2,
-              textAlign: 'center',
-            }}
-          >
-            <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 'bold', mb: 4 }}>
+          <Box sx={{ my: 4 }}>
+            <Typography variant="h3" component="h1" gutterBottom align="center">
               ResearchRot
             </Typography>
-            <Typography variant="h6" color="text.secondary" paragraph>
-              Upload your files or add URLs to get started
+            <Typography variant="h5" component="h2" gutterBottom align="center" color="text.secondary">
+              Transform Research Papers into Brain Rot
             </Typography>
-            <UploadSection />
-          </Paper>
+            
+            <Paper elevation={3} sx={{ p: 3, mt: 3 }}>
+              <UploadSection onSummaryGenerated={handleSummaryGenerated} />
+            </Paper>
+            
+            {summary && (
+              <>
+                <FlashcardGenerator summary={summary} />
+                <MnemonicGenerator summary={summary} />
+              </>
+            )}
+          </Box>
         </Container>
 
         {showGrass && (

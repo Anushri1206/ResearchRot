@@ -14,7 +14,7 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import LinkIcon from '@mui/icons-material/Link';
 import CloseIcon from '@mui/icons-material/Close';
 
-const UploadSection = () => {
+const UploadSection = ({ onSummaryGenerated }) => {
   const [url, setUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -74,6 +74,10 @@ const UploadSection = () => {
 
       const data = await response.json();
       setResponse(data.answer);
+      // Pass the summary to the parent component
+      if (onSummaryGenerated) {
+        onSummaryGenerated(data.answer);
+      }
     } catch (err) {
       console.error('Error processing URL:', err);
       setError(err.message);
@@ -110,6 +114,10 @@ const UploadSection = () => {
 
       const data = await response.json();
       setResponse(data.answer);
+      // Pass the summary to the parent component
+      if (onSummaryGenerated) {
+        onSummaryGenerated(data.answer);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
