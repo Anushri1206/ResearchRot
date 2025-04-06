@@ -2,66 +2,21 @@ import React, { useState } from 'react';
 import {
   Box,
   Button,
-  TextField,
   Typography,
   Paper,
   CircularProgress,
-  IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
+  TextField,
 } from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
-import AddIcon from '@mui/icons-material/Add';
 
 const BrainRotSection = () => {
-  const [videoFile, setVideoFile] = useState(null);
-  const [phrases, setPhrases] = useState(['']);
+  const [pdfUrl, setPdfUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [resultVideo, setResultVideo] = useState(null);
   const [error, setError] = useState(null);
 
-  const handleVideoUpload = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      // Check if the file is a video
-      if (!file.type.startsWith('video/')) {
-        setError('Please upload a valid video file');
-        setVideoFile(null);
-        return;
-      }
-      
-      // Check file size (max 100MB)
-      if (file.size > 100 * 1024 * 1024) {
-        setError('Video file size should be less than 100MB');
-        setVideoFile(null);
-        return;
-      }
-      
-      setVideoFile(file);
-      setError(null);
-    }
-  };
-
-  const handlePhraseChange = (index, value) => {
-    const newPhrases = [...phrases];
-    newPhrases[index] = value;
-    setPhrases(newPhrases);
-  };
-
-  const addPhrase = () => {
-    setPhrases([...phrases, '']);
-  };
-
-  const removePhrase = (index) => {
-    const newPhrases = phrases.filter((_, i) => i !== index);
-    setPhrases(newPhrases);
-  };
-
   const handleSubmit = async () => {
-    if (!videoFile || phrases.length === 0) {
-      setError('Please upload a video and add at least one phrase');
+    if (!pdfUrl) {
+      setError('Please provide a PDF URL');
       return;
     }
 
@@ -69,22 +24,20 @@ const BrainRotSection = () => {
     setError(null);
 
     const formData = new FormData();
-    formData.append('video', videoFile);
     
-    // Create request data
+    // Create request data with fixed values
     const requestData = {
-      phrases: phrases.filter(phrase => phrase.trim() !== ''),
+      pdf_url: pdfUrl,
       text_color: 'white',
-      font_size: 50,
-      duration_per_phrase: 2.0,
+      font_size: 225,
+      duration_per_phrase: 3.0,
       position: 'center'
     };
     
     // Log the request data
     console.log('Request data:', requestData);
-    console.log('Video file:', videoFile);
     
-    // Append request data as a separate field
+    // Append request data
     formData.append('request', JSON.stringify(requestData));
 
     try {
@@ -126,71 +79,21 @@ const BrainRotSection = () => {
         </Typography>
 
         <Box sx={{ mb: 3 }}>
-          <Button
-            variant="contained"
-            component="label"
+          <TextField
+            fullWidth
+            label="PDF URL"
+            value={pdfUrl}
+            onChange={(e) => setPdfUrl(e.target.value)}
+            placeholder="Enter PDF URL"
             sx={{ mb: 2 }}
-          >
-            Upload Background Video
-            <input
-              type="file"
-              hidden
-              accept="video/mp4,video/quicktime,video/x-msvideo,video/x-matroska"
-              onChange={handleVideoUpload}
-            />
-          </Button>
-          {videoFile && (
-            <Box sx={{ ml: 2 }}>
-              <Typography variant="body2">
-                Selected: {videoFile.name}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Supported formats: MP4, MOV, AVI, MKV
-              </Typography>
-            </Box>
-          )}
+          />
         </Box>
-
-        <Typography variant="h6" gutterBottom>
-          Phrases
-        </Typography>
-        <List>
-          {phrases.map((phrase, index) => (
-            <ListItem key={index}>
-              <TextField
-                fullWidth
-                value={phrase}
-                onChange={(e) => handlePhraseChange(index, e.target.value)}
-                placeholder="Enter phrase"
-                variant="outlined"
-                size="small"
-              />
-              <ListItemSecondaryAction>
-                <IconButton
-                  edge="end"
-                  aria-label="delete"
-                  onClick={() => removePhrase(index)}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </ListItemSecondaryAction>
-            </ListItem>
-          ))}
-        </List>
-
-        <Button
-          startIcon={<AddIcon />}
-          onClick={addPhrase}
-          sx={{ mt: 1 }}
-        >
-          Add Phrase
-        </Button>
 
         <Button
           variant="contained"
           color="primary"
           onClick={handleSubmit}
-          disabled={loading}
+          disabled={loading || !pdfUrl}
           sx={{ mt: 3, width: '100%' }}
         >
           {loading ? <CircularProgress size={24} /> : 'Generate Video'}

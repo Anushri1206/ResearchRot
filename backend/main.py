@@ -14,7 +14,7 @@ import json
 import asyncio
 from voiceover import generate_voice_clips, join_audio_clips
 import base64
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, AudioFileClip
 import numpy as np
 from typing import List
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 from google.genai.types import GenerateContentConfig, HttpOptions
+from prompts import BRAINROT_PROMPT, PODCAST_PROMPT
 
 load_dotenv()
 
@@ -70,11 +71,10 @@ class PodcastResponse(BaseModel):
 
 
 class BrainRotRequest(BaseModel):
-    pdf_file: Optional[str] = None
-    prompt: Optional[str] = None
+    pdf_url: str
     text_color: str = "white"
-    font_size: int = 50
-    duration_per_phrase: float = 2.0
+    font_size: int = 200
+    duration_per_phrase: float = 3.0
     position: str = "center"
 
 
@@ -147,199 +147,6 @@ def podcast_generator(prompt: str, system_message: str, input_content: str, inpu
     try:
         logger.info("Generating podcast dialogue...")
 
-        DIALOGUE_PROMPT = """You are a world-class dialogue producer tasked with transforming the provided input text into an engaging and informative conversation among multiple participants (ranging from 2 to 5 people). The input may be unstructured or messy, sourced from PDFs or web pages. Your goal is to extract the most interesting and insightful content for a compelling discussion.
-
-The input text will be provided in <input_text> tags.
-MAKE SURE THAT THERE ARE NOT MORE THAN 5 BACK AND FORTHS. KEEP IT SHORT AND CONCISE.
-
-You will be either required to create scratchpad ideas or write the dialogue based on the scratchpad ideas and the input text.
-
-Scratchpad ideas will be provided in <scratchpad> tags.
-
-You will also be provided with a list of speakers and their properties.
-
-**Steps to Follow:**
-
-1. **Analyze the Input:** Carefully examine the text, identifying key topics, points, and interesting facts or anecdotes that could drive an engaging conversation. Disregard irrelevant information or formatting issues.
-
-2. **Brainstorm Ideas:** In the `<scratchpad>`, creatively brainstorm ways to present the key points engagingly. Consider:
-   - Analogies, storytelling techniques, or hypothetical scenarios to make content relatable.
-   - Ways to make complex topics accessible to a general audience.
-   - Thought-provoking questions to explore during the conversation.
-   - Creative approaches to fill any gaps in the information.
-
-3. **Craft the Dialogue in Nested JSON Format:** Develop a natural, conversational flow among the participants, using a nested JSON structure to represent overlapping speech.
-
-   **Format for the Dialogue:**
-
-   - **Overall Structure:** The dialogue is a JSON array containing dialogue turn objects.
-   - **Dialogue Turn Object Fields:**
-     - `"speaker"`: Name of the speaker.
-     - `"text"`: Dialogue text (no more than 800 characters).
-     - `"overlaps"`: (Optional) Array of overlapping dialogue turn objects.
-       - Each overlapping dialogue turn object can include its own `"overlaps"` array for further nesting if necessary.
-
-   **Example:**
-
-   ```json
-   [
-     {
-       "speaker": "Emma",
-       "text": "Welcome, everyone! Let's dive into today's topic."
-     },
-     {
-       "speaker": "Liam",
-       "text": "Can't wait to get started!",
-       "overlaps": [
-         {
-           "speaker": "Olivia",
-           "text": "Absolutely, it's going to be exciting."
-         },
-         {
-           "speaker": "Noah",
-           "text": "I've been looking forward to this all week!"
-         }
-       ]
-     },
-     {
-       "speaker": "Emma",
-       "text": "Great enthusiasm! So, our first question is..."
-     }
-   ]
-
-4. Rules for the Dialogue:
-    - Participant Names: Use made-up names to create an immersive experience.
-    - Hosts: If there are hosts (maximum of 2), they initiate and guide the conversation.
-    - Interaction: Include thoughtful questions and encourage natural back-and-forth.
-    - Natural Speech: Incorporate fillers and speech patterns (e.g., "um," "you know").
-    - Overlaps: Represent overlapping speech using the "overlaps" field.
-    - Content Accuracy: Ensure contributions are substantiated by the input text.
-    - Appropriateness: Maintain PG-rated content suitable for all audiences.
-    - Conclusion: End the conversation naturally without forced recaps.
-
-5. Summarize Key Insights: Naturally weave a summary of key points into the dialogue's closing part. This should feel casual and reinforce the main takeaways before signing off.
-
-6. Maintain Authenticity: Include:
-    - Moments of genuine curiosity or surprise.
-    - Brief struggles to articulate complex ideas.
-    - Light-hearted humor where appropriate.
-    - Personal anecdotes related to the topic (within the input text bounds).
-
-7. Consider Pacing and Structure: Ensure a natural flow:
-    - Hook: Start strong to grab attention.
-    - Build-Up: Gradually increase complexity.
-    - Breathers: Include moments for listeners to absorb information.
-    - Conclusion: End on a high note or thought-provoking point.
-    - Overlap: Overlaps in longer text should be used to show a discussion between two people.
-
-8. Enhance Natural Speech Flow with Pauses and Interactions:
-
-   - Use Dashes (`-` or `—`) for Brief Pauses:
-     - Incorporate dashes within dialogue to indicate short pauses, mimicking natural speech patterns.
-       - *Example:*
-         ```json
-         {
-           "speaker": "Alex",
-           "text": "I think we should - maybe - consider other options."
-         }
-         ```
-
-   - Use Ellipses (`...`) for Hesitations or Uncertainty:
-     - Include ellipses to represent hesitations, thinking pauses, or uncertainty.
-       - *Example:*
-         ```json
-         {
-           "speaker": "Jamie",
-           "text": "I'm not sure if that's... the best approach."
-         }
-         ```
-
-   - Represent Overlapping Speech for Interactions:
-     - Utilize the `"overlaps"` field to depict interruptions or simultaneous speech, enhancing the conversational dynamics.
-       - *Example:*
-         ```json
-         [
-           {
-             "speaker": "Taylor",
-             "text": "We could start with the initial findings and then—",
-             "overlaps": [
-               {
-                 "speaker": "Jordan",
-                 "text": "Actually, I think we should re-examine the data first."
-               }
-             ]
-           }
-         ]
-         ```
-
-   - Incorporate Natural Speech Patterns:
-     - Use conversational fillers and colloquial expressions to make the dialogue sound authentic and engaging.
-       - *Examples:*
-         ```json
-         {
-           "speaker": "Morgan",
-           "text": "You know, it's kind of tricky to explain."
-         },
-         {
-           "speaker": "Riley",
-           "text": "Well, let's see... maybe we can figure it out together."
-         }
-         ```
-
-9. Maintain Clarity in JSON Formatting:
-
-    - Integrate Pauses and Overlaps Smoothly:
-      - Ensure that dashes, ellipses, and overlaps are included appropriately within the `"text"` field, keeping the JSON structure valid.
-    - Avoid Unintended Read-Aloud Text:
-      - Be mindful that the symbols used for pauses and overlaps are interpreted correctly during speech synthesis and do not cause unintended artifacts in the audio output.
-    - Example of Combined Usage:
-      ```json
-      [
-        {
-          "speaker": "Ella",
-          "text": "So, what are our next steps - any ideas?"
-        },
-        {
-          "speaker": "Liam",
-          "text": "Well... we could reassess the timeline.",
-          "overlaps": [
-            {
-              "speaker": "Sophia",
-              "text": "Or perhaps allocate more resources?"
-            }
-          ]
-        },
-        {
-          "speaker": "Ella",
-          "text": "That's a good point - let's consider both options."
-        }
-      ]
-      ```
-
-IMPORTANT RULES:
-
-- JSON Formatting: The dialogue must be valid JSON for easy parsing.
-- Overlaps Representation: Use the "overlaps" field to denote overlapping speech.
-- Line Length: Each "text" field should be no more than 800 characters.
-- Flexibility: Since exact timings aren't available, adjust overlaps during audio production based on speech duration.
-- Output Design: The dialogue is intended for audio conversion; write accordingly.
-- Number of Speakers: The number of speakers should be between 2 and 4. A lot speakers will make things messy as voices will keep on changing.
-- Natural Language: The dialogue should be in natural language and not robotic use points 8 and 9 to make it sound natural when generating the dialogue.
-The two speakers are Jessica and Michael.
-<scratchpad> Write your brainstorming ideas and a rough outline for the dialogue here. Note the key insights and takeaways to reiterate at the end. Also provide names for sepaker and speaker ids.
-The following are the speakers and their properties:
-- Female, soft and caring voice. American, Casual, Young, Female, Conversational. Id: fNmfW5GlQ7PDakGkiTzs
-- Male, American, Casual, Middle-aged. Id: iP95p4xoKVk53GoZ742B
-
-
-When generating the scratchpad ideas, if a user message is provided please think of ideas based on that message or instructions. The instruction(s) can only apply if the PDF content has text related to the instruction(s). If the content does not have text related to the instruction(s), ignore the instruction(s).
-User instruction will be provided in <user_instruction> tags.
-</scratchpad>
-<dialogue> Write your engaging, informative dialogue here in the specified nested JSON format, based on your brainstorming session's key points and creative ideas. Ensure the content is accessible and engaging for a general audience.
-Aim for a long, detailed dialogue while staying on topic and maintaining an engaging flow. Use your full output capacity to communicate the key information effectively and entertainingly.
-
-At the end of the dialogue, have the participants naturally summarize the main insights and takeaways. This should flow organically, reinforcing the central ideas casually before concluding. </dialogue>"""
-
         if input_type == "url":
             full_prompt = f"""<input_text>
 {input_content}
@@ -349,11 +156,10 @@ At the end of the dialogue, have the participants naturally summarize the main i
 {prompt}
 </user_instruction>
 
-{DIALOGUE_PROMPT}"""
+{PODCAST_PROMPT}"""
 
             dialogue = call_gemini(prompt=full_prompt, system_message=system_message)
         else:
-            # files = upload_to_gemini(input_content, "application/pdf") # Missing Function
             dialogue = call_gemini(prompt=prompt, system_message=system_message)
 
         if not dialogue:
@@ -424,7 +230,7 @@ async def generate_podcast_endpoint(request: PodcastRequest):
                 if not final_audio_path:
                     logger.error("Failed to generate final audio path")
                     return PodcastResponse(
-                        transcript=transcript,
+                        transcript=str(dialogue_list),  # Convert to string
                         audio_file="",
                         status="error",
                         error="Failed to generate audio file"
@@ -435,7 +241,7 @@ async def generate_podcast_endpoint(request: PodcastRequest):
                     if not os.path.exists(final_audio_path):
                         logger.error(f"Audio file not found at path: {final_audio_path}")
                         return PodcastResponse(
-                            transcript=transcript,
+                            transcript=str(dialogue_list),  # Convert to string
                             audio_file="",
                             status="error",
                             error="Audio file not found"
@@ -448,14 +254,14 @@ async def generate_podcast_endpoint(request: PodcastRequest):
                 except Exception as e:
                     logger.error(f"Failed to read and convert audio file: {e}")
                     return PodcastResponse(
-                        transcript=transcript,
+                        transcript=str(dialogue_list),  # Convert to string
                         audio_file="",
                         status="error",
                         error="Failed to process audio file"
                     )
 
                 return PodcastResponse(
-                    transcript=dialogue_list,
+                    transcript=str(dialogue_list),  # Convert to string
                     audio_file=audio_base64,
                     status="success"
                 )
@@ -463,7 +269,7 @@ async def generate_podcast_endpoint(request: PodcastRequest):
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse JSON transcript: {e}")
                 return PodcastResponse(
-                    transcript=transcript,
+                    transcript=str(transcript),  # Use original transcript as string
                     audio_file="",
                     status="error",
                     error="Failed to parse podcast transcript"
@@ -471,7 +277,7 @@ async def generate_podcast_endpoint(request: PodcastRequest):
         else:
             logger.error("Could not find <dialogue> section in the text")
             return PodcastResponse(
-                transcript=transcript,
+                transcript=str(transcript),  # Use original transcript as string
                 audio_file="",
                 status="error",
                 error="Could not find dialogue section in transcript"
@@ -521,11 +327,9 @@ async def health_check():
 
 @app.post("/generate_brainrot", response_model=BrainRotResponse)
 async def generate_brainrot(
-    video: UploadFile = File(...),
-    pdf: UploadFile = File(...),
     request: str = Form(...)
 ):
-    """Generates a brain rot style video with text from PDF."""
+    """Generates a brain rot style video with text from PDF URL."""
     try:
         logger.info("Starting brain rot video generation")
         
@@ -544,27 +348,12 @@ async def generate_brainrot(
         # Process PDF and generate script
         logger.info("Processing PDF and generating script")
         try:
-            # Save PDF to temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
-                content = await pdf.read()
-                temp_pdf.write(content)
-                pdf_path = temp_pdf.name
-
-            # Extract text from PDF
-            pdf_text = download_pdf(pdf_path)
-            os.unlink(pdf_path)  # Clean up PDF file
+            # Download and extract text from PDF
+            pdf_text = download_pdf(request_data['pdf_url'])
+            logger.info("Successfully extracted text from PDF")
 
             # Generate script using Gemini
-            prompt = f"""Convert the following content into a brain rot style script with short, engaging phrases. 
-            Each phrase should be attention-grabbing and meme-like. Keep phrases under 50 characters.
-            Format the response as a JSON array of phrases.
-            
-            Content:
-            {pdf_text}
-            
-            Example format:
-            ["This is wild!", "No way!", "You won't believe this!", "Mind blown!"]
-            """
+            prompt = BRAINROT_PROMPT.format(content=pdf_text)
 
             script_response = call_gemini(
                 prompt=prompt,
@@ -573,12 +362,21 @@ async def generate_brainrot(
 
             # Parse the response into phrases
             try:
-                phrases = json.loads(script_response)
+                # Clean up the response by removing markdown code block markers
+                cleaned_response = script_response.strip()
+                if cleaned_response.startswith('```json'):
+                    cleaned_response = cleaned_response[7:]  # Remove ```json
+                if cleaned_response.endswith('```'):
+                    cleaned_response = cleaned_response[:-3]  # Remove ```
+                cleaned_response = cleaned_response.strip()
+                
+                phrases = json.loads(cleaned_response)
                 if not isinstance(phrases, list):
                     raise ValueError("Response is not a list")
                 logger.info(f"Generated {len(phrases)} phrases from PDF")
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse Gemini response: {str(e)}")
+                logger.error(f"Response content: {script_response}")
                 return BrainRotResponse(
                     video_file="",
                     status="error",
@@ -593,18 +391,60 @@ async def generate_brainrot(
                 error="Failed to process PDF"
             )
 
-        # Process video and add text overlays
-        logger.info("Processing video with generated phrases")
+        # Generate voice clips for each phrase
+        logger.info("Generating voice clips")
         try:
-            # Save uploaded video to temporary file
-            file_extension = os.path.splitext(video.filename)[1] or '.mp4'
-            with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_video:
-                content = await video.read()
-                temp_video.write(content)
-                temp_video_path = temp_video.name
+            # Combine all phrases into a single text
+            combined_text = " ".join(phrases)
+            
+            # Create a single dialogue entry
+            dialogue = [{
+                "speaker": "Jessica",
+                "text": combined_text,
+                "voice_id": "fNmfW5GlQ7PDakGkiTzs"  # Female voice ID
+            }]
+            
+            # Generate single voice clip
+            await generate_voice_clips(dialogue)
+            logger.info("Generated voice clip")
+            
+            # Get the audio path
+            final_audio_path = join_audio_clips(dialogue)
+            if not final_audio_path:
+                logger.error("Failed to generate final audio path")
+                return BrainRotResponse(
+                    video_file="",
+                    status="error",
+                    error="Failed to generate audio file"
+                )
+            logger.info(f"Generated audio at: {final_audio_path}")
+
+        except Exception as e:
+            logger.error(f"Error generating audio: {str(e)}")
+            return BrainRotResponse(
+                video_file="",
+                status="error",
+                error="Failed to generate audio"
+            )
+
+        # Process video and add text overlays
+        logger.info("Processing video with generated phrases and audio")
+        try:
+            # Use default video from static folder
+            default_video_path = os.path.join("static", "input.mov")
+            if not os.path.exists(default_video_path):
+                logger.error(f"Default video not found at path: {default_video_path}")
+                return BrainRotResponse(
+                    video_file="",
+                    status="error",
+                    error="Default background video not found"
+                )
 
             # Load the video
-            video_clip = VideoFileClip(temp_video_path)
+            video_clip = VideoFileClip(default_video_path)
+            
+            # Load the audio
+            audio_clip = AudioFileClip(final_audio_path)
             
             # Create text clips for each phrase
             text_clips = []
@@ -613,7 +453,7 @@ async def generate_brainrot(
                 
                 txt_clip = TextClip(
                     phrase,
-                    fontsize=request_data.get('font_size', 50),
+                    fontsize=request_data.get('font_size', 200),
                     color=request_data.get('text_color', 'white'),
                     bg_color='transparent',
                     font='Arial-Bold',
@@ -626,8 +466,9 @@ async def generate_brainrot(
                 
                 text_clips.append(txt_clip)
 
-            # Create final video
+            # Create final video with audio
             final_video = CompositeVideoClip([video_clip] + text_clips)
+            final_video = final_video.set_audio(audio_clip)
             
             # Save the result
             output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
@@ -635,6 +476,7 @@ async def generate_brainrot(
             
             # Clean up
             video_clip.close()
+            audio_clip.close()
             final_video.close()
             
             # Convert to base64
@@ -643,8 +485,8 @@ async def generate_brainrot(
                 video_base64 = base64.b64encode(video_data).decode('utf-8')
             
             # Clean up temporary files
-            os.unlink(temp_video_path)
             os.unlink(output_path)
+            os.unlink(final_audio_path)
             
             return BrainRotResponse(
                 video_file=video_base64,
@@ -665,4 +507,4 @@ async def generate_brainrot(
             video_file="",
             status="error",
             error=str(e)
-        )
+        ) 
