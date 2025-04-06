@@ -42,4 +42,4 @@ frontend/.env
 # OS
 .DS_Store
 Thumbs.db 
-backend/static/input.mov 
+*.mov
