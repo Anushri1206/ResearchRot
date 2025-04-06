@@ -14,8 +14,10 @@ import json
 import asyncio
 from voiceover import generate_voice_clips, join_audio_clips
 import base64
-
-from fastapi import FastAPI, HTTPException
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+import numpy as np
+from typing import List
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
@@ -65,6 +67,21 @@ class PodcastResponse(BaseModel):
     transcript: str
     audio_file: str
     status: str
+
+
+class BrainRotRequest(BaseModel):
+    pdf_file: Optional[str] = None
+    prompt: Optional[str] = None
+    text_color: str = "white"
+    font_size: int = 50
+    duration_per_phrase: float = 2.0
+    position: str = "center"
+
+
+class BrainRotResponse(BaseModel):
+    video_file: str
+    status: str
+    error: Optional[str] = None
 
 
 def download_pdf(url: str) -> str:
@@ -414,7 +431,6 @@ async def generate_podcast_endpoint(request: PodcastRequest):
                     )
                 logger.info(f"Joined audio clips into: {final_audio_path}")
                 
-                # Read the audio file and convert to base64
                 try:
                     if not os.path.exists(final_audio_path):
                         logger.error(f"Audio file not found at path: {final_audio_path}")
@@ -502,3 +518,151 @@ async def process_query(query: Query):
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+@app.post("/generate_brainrot", response_model=BrainRotResponse)
+async def generate_brainrot(
+    video: UploadFile = File(...),
+    pdf: UploadFile = File(...),
+    request: str = Form(...)
+):
+    """Generates a brain rot style video with text from PDF."""
+    try:
+        logger.info("Starting brain rot video generation")
+        
+        # Parse the request data
+        try:
+            request_data = json.loads(request)
+            logger.info(f"Parsed request data: {request_data}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse request data: {str(e)}")
+            return BrainRotResponse(
+                video_file="",
+                status="error",
+                error="Invalid request data format"
+            )
+
+        # Process PDF and generate script
+        logger.info("Processing PDF and generating script")
+        try:
+            # Save PDF to temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
+                content = await pdf.read()
+                temp_pdf.write(content)
+                pdf_path = temp_pdf.name
+
+            # Extract text from PDF
+            pdf_text = download_pdf(pdf_path)
+            os.unlink(pdf_path)  # Clean up PDF file
+
+            # Generate script using Gemini
+            prompt = f"""Convert the following content into a brain rot style script with short, engaging phrases. 
+            Each phrase should be attention-grabbing and meme-like. Keep phrases under 50 characters.
+            Format the response as a JSON array of phrases.
+            
+            Content:
+            {pdf_text}
+            
+            Example format:
+            ["This is wild!", "No way!", "You won't believe this!", "Mind blown!"]
+            """
+
+            script_response = call_gemini(
+                prompt=prompt,
+                system_message="You are a content creator specializing in viral, attention-grabbing content. Convert the given text into short, engaging phrases suitable for a brain rot style video."
+            )
+
+            # Parse the response into phrases
+            try:
+                phrases = json.loads(script_response)
+                if not isinstance(phrases, list):
+                    raise ValueError("Response is not a list")
+                logger.info(f"Generated {len(phrases)} phrases from PDF")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse Gemini response: {str(e)}")
+                return BrainRotResponse(
+                    video_file="",
+                    status="error",
+                    error="Failed to generate script from PDF"
+                )
+
+        except Exception as e:
+            logger.error(f"Error processing PDF: {str(e)}")
+            return BrainRotResponse(
+                video_file="",
+                status="error",
+                error="Failed to process PDF"
+            )
+
+        # Process video and add text overlays
+        logger.info("Processing video with generated phrases")
+        try:
+            # Save uploaded video to temporary file
+            file_extension = os.path.splitext(video.filename)[1] or '.mp4'
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_video:
+                content = await video.read()
+                temp_video.write(content)
+                temp_video_path = temp_video.name
+
+            # Load the video
+            video_clip = VideoFileClip(temp_video_path)
+            
+            # Create text clips for each phrase
+            text_clips = []
+            for i, phrase in enumerate(phrases):
+                start_time = i * request_data.get('duration_per_phrase', 2.0)
+                
+                txt_clip = TextClip(
+                    phrase,
+                    fontsize=request_data.get('font_size', 50),
+                    color=request_data.get('text_color', 'white'),
+                    bg_color='transparent',
+                    font='Arial-Bold',
+                    method='caption'
+                )
+                
+                txt_clip = txt_clip.set_position(request_data.get('position', 'center'))
+                txt_clip = txt_clip.set_duration(request_data.get('duration_per_phrase', 2.0))
+                txt_clip = txt_clip.set_start(start_time)
+                
+                text_clips.append(txt_clip)
+
+            # Create final video
+            final_video = CompositeVideoClip([video_clip] + text_clips)
+            
+            # Save the result
+            output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
+            final_video.write_videofile(output_path, codec='libx264', audio_codec='aac')
+            
+            # Clean up
+            video_clip.close()
+            final_video.close()
+            
+            # Convert to base64
+            with open(output_path, "rb") as f:
+                video_data = f.read()
+                video_base64 = base64.b64encode(video_data).decode('utf-8')
+            
+            # Clean up temporary files
+            os.unlink(temp_video_path)
+            os.unlink(output_path)
+            
+            return BrainRotResponse(
+                video_file=video_base64,
+                status="success"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error processing video: {str(e)}")
+            return BrainRotResponse(
+                video_file="",
+                status="error",
+                error="Failed to process video"
+            )
+            
+    except Exception as e:
+        logger.error(f"Error generating brain rot video: {str(e)}")
+        return BrainRotResponse(
+            video_file="",
+            status="error",
+            error=str(e)
+        )

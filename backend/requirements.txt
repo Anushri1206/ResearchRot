@@ -8,4 +8,6 @@ pydantic==2.11.2
 google-generativeai
 requests
 PyPDF2
-python-multipart 
+python-multipart
+moviepy==1.0.3
+numpy==1.24.3 

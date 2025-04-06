@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Box, Container, Typography, Paper, ThemeProvider, createTheme, IconButton } from '@mui/material';
+import { Box, Container, Typography, Paper, ThemeProvider, createTheme, IconButton, Tabs, Tab } from '@mui/material';
 import UploadSection from './components/UploadSection';
+import BrainRotSection from './components/BrainRotSection';
 import GrassEffect from './components/GrassEffect';
 import GrassIcon from '@mui/icons-material/Grass';
 
@@ -17,6 +18,11 @@ const theme = createTheme({
 
 function App() {
   const [showGrass, setShowGrass] = useState(false);
+  const [currentTab, setCurrentTab] = useState(0);
+
+  const handleTabChange = (event, newValue) => {
+    setCurrentTab(newValue);
+  };
 
   return (
     <ThemeProvider theme={theme}>
@@ -63,10 +69,24 @@ function App() {
             <Typography variant="h3" component="h1" gutterBottom sx={{ fontWeight: 'bold', mb: 4 }}>
               ResearchRot
             </Typography>
-            <Typography variant="h6" color="text.secondary" paragraph>
-              Upload your files or add URLs to get started
-            </Typography>
-            <UploadSection />
+            
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+              <Tabs value={currentTab} onChange={handleTabChange} centered>
+                <Tab label="Research" />
+                <Tab label="Brain Rot" />
+              </Tabs>
+            </Box>
+
+            {currentTab === 0 ? (
+              <>
+                <Typography variant="h6" color="text.secondary" paragraph>
+                  Upload your files or add URLs to get started
+                </Typography>
+                <UploadSection />
+              </>
+            ) : (
+              <BrainRotSection />
+            )}
           </Paper>
         </Container>
 
